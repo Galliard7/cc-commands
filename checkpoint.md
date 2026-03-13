@@ -34,11 +34,12 @@ git status
 git diff
 ```
 
-### 1c. Diff each skill backend
+### 1c. Diff all code repos
 
-For each backend in `~/skill-backends/`:
+Scan every code repo — skill backends AND standalone repos:
 ```bash
-for repo in ~/skill-backends/*/; do
+for repo in ~/skill-backends/*/ ~/repos/*/; do
+  [ -d "$repo/.git" ] || continue
   echo "=== $(basename $repo) ==="
   cd "$repo"
   git log --since="$(git -C ~/.openclaw/workspace log --grep='checkpoint:' -1 --format='%ai' 2>/dev/null || echo '1 week ago')" --oneline 2>/dev/null
@@ -298,18 +299,43 @@ Check these files and trim if they exceed the stated limits:
 
 Only trim if actually over the limit. Use your judgment about what to cut.
 
-## Step 12: Commit and Push
+## Step 12: Commit and Push All Repos
 
-Commit all changed workspace files and push to the remote:
+Commit and push **every repo with changes** — workspace, skill backends, and standalone repos.
 
+### 12a. Workspace repo
 ```bash
 cd ~/.openclaw/workspace
 git add -A
+git status --short
+```
+If there are staged changes:
+```bash
 git commit -m "checkpoint: YYYY-MM-DD — [1-line summary of key changes]"
 git push
 ```
 
-Only do this if files were actually changed. Use today's date and a brief summary.
+### 12b. All code repos
+For each repo, check for uncommitted changes and push:
+```bash
+for repo in ~/skill-backends/*/ ~/repos/*/; do
+  [ -d "$repo/.git" ] || continue
+  cd "$repo"
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "=== Committing $(basename $repo) ==="
+    git add -A
+    git commit -m "checkpoint: YYYY-MM-DD — [1-line summary of changes in this repo]"
+  fi
+  # Push if there are local commits not on remote
+  if [ -n "$(git log @{u}..HEAD --oneline 2>/dev/null)" ]; then
+    echo "=== Pushing $(basename $repo) ==="
+    git push
+  fi
+  cd -
+done
+```
+
+Skip repos with no changes and no unpushed commits.
 
 ## Step 13: Report Summary
 
@@ -341,7 +367,7 @@ Updated:
 - Sessions — swept N file(s) to vaults/Claw/Daily/YYYY-MM-DD/ [or "no session files"]
 - Flat file migration — migrated N file(s) [or "none needed"]
 - Reference docs — [which ones, if any]
-- Git — [committed and pushed / no changes]
+- Git — workspace: [committed and pushed / no changes]; backends: [list repos pushed, or "no changes"]
 
 No changes:
 - [list any files that didn't need updating and why]

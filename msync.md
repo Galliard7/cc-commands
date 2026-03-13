@@ -29,9 +29,10 @@ git diff --stat
 git status --short
 ```
 
-### 2b. Skill backends
+### 2b. All code repos (skill backends + standalone repos)
 ```bash
-for repo in ~/skill-backends/*/; do
+for repo in ~/skill-backends/*/ ~/repos/*/; do
+  [ -d "$repo/.git" ] || continue
   echo "=== $(basename $repo) ==="
   cd "$repo"
   git log --oneline --since="7 days ago" 2>/dev/null
@@ -43,7 +44,7 @@ done
 ### 2c. Synthesize
 
 From all the diffs and logs, identify:
-- Which projects had codebase changes (map repos to projects: noteflow → noteflow, cc-remote → cc-remote, content-extractor → contentflow, dataflow-toolkit → dataflow, workspace changes → claw/missioncontrol)
+- Which projects had codebase changes (map repos to projects: noteflow → noteflow, cc-remote → cc-remote, content-extractor → contentflow, dataflow-toolkit → dataflow, cc-commands → claw, workspace changes → claw/missioncontrol)
 - What was built, modified, or fixed — read commit messages and diff stats
 - Any uncommitted work in progress
 
@@ -60,9 +61,9 @@ python3 ~/skill-backends/noteflow/nf-mc-sync.py
 ```
 
 This script:
-- Finds NoteFlow items of type `task` that are `open` and have no `linked_card`
-- Creates a `pending` MC card for each (title + body carried over, no plan file, no project)
-- Links the NoteFlow item back to the new card via `linked_card`
+- Finds NoteFlow items of type `task` that are `open` and have no `linked_cards`
+- Creates an MC card in the board's initial status for each (title + body carried over, no plan file, no project)
+- Links the NoteFlow item back to the new card via `linked_cards`
 - Syncs done status bidirectionally: NoteFlow done → MC card done, MC card done → NoteFlow done
 
 After running, note any newly created cards — they'll appear in the report (Step 11) and are candidates for project assignment and reconciliation in subsequent steps.
@@ -85,6 +86,18 @@ After running, note any newly created cards — they'll appear in the report (St
 | **Partially done** | Leave in current status. Add comment noting which criteria passed/didn't (only if meaningful progress since last comment). |
 | **Progress made (no status change)** | Leave in current status. Add comment capturing what progress was made — e.g., discussion, decisions, partial implementation, blockers identified. |
 | **No change** | Leave as-is, no comment needed. |
+
+### For each card in a status that implies blocked:
+1. **Identify the blocker** — read the card's most recent comment or description for what's blocking progress
+2. **Check if the blocker is resolved** — scan git evidence from Step 2, codebase state, and conversation context for signals that the blocking condition has changed
+3. **Check completed cards for overlap** — the blocking dependency may have been delivered as part of another card's work
+4. Classify and act:
+
+| Verdict | Action |
+|---|---|
+| **Blocker resolved, work complete** | Move card to the terminal (completed) status. Archive plan file. Add comment. |
+| **Blocker resolved, work remains** | Move card to the in-progress status. Add comment noting what unblocked it. |
+| **Still blocked** | Leave as-is. Add comment only if new information about the blocker exists. |
 
 ### For each card in a status that implies not-yet-started or queued:
 1. **Identify criteria** — read the plan file. If `plan_file` is null, use the card's `title` and `description` as criteria. Never skip a card because it lacks a plan file.
@@ -173,6 +186,7 @@ For each card where `project` is `null`:
    - **contentflow** — Content ingestion, extraction, creation, video/media
    - **cc-remote** — Remote access, Telegram bridge, handoff mode
    - **dataflow** — Data analysis, Kaggle, profiling, EDA
+   - **career** — Career development, portfolio, publishing, professional growth
 4. Infer the best project match based on keyword alignment, similarity to already-assigned cards, and the project's `summary` field
 5. If a confident match exists, set the card's `project` field to the project `id` in board.json
 6. If no clear match (personal tasks, vague cards, cross-cutting work that doesn't fit one project), leave `project` as `null`
