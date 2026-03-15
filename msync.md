@@ -131,6 +131,32 @@ python3 ~/skill-backends/noteflow/mc-comment.py --plan "<card-slug>" --comment "
 - **Scan the full conversation including the triggering message** — the user's `/msync` invocation often comes with context ("we're working on X", "just finished Y") that is itself evidence of progress
 - **Never assume specific status names** — always read the board's `statuses` array and match by semantic meaning (completed, in-progress, not-started, blocked, etc.)
 
+### Obsidian enrichment for archived plan files
+
+When archiving a plan file to `~/.openclaw/vaults/Claw/OpenClaw/`, enrich it before (or after) copying:
+
+1. **Prepend YAML frontmatter** (if not already present):
+   ```yaml
+   ---
+   type: plan
+   project: <project-id from card>
+   card: <card-slug>
+   date: <today's date, YYYY-MM-DD>
+   status: done
+   ---
+   ```
+
+2. **Add a "Related" section** at the bottom of the file linking to other plans that are dependencies, prerequisites, or were superseded — but only if the relationship is clear from board.json (same project, comments referencing the other card, etc.). Use `[[wikilinks]]`:
+   ```markdown
+   ## Related
+   - Supersedes [[older-plan-name]]
+   - Depends on [[prerequisite-plan]]
+   - See also [[related-plan]]
+   ```
+   Skip this section if no clear relationships exist — don't force links.
+
+3. **Add wikilinks inline** to any project hub references in the plan body (e.g., wrap "NoteFlow" with `[[NoteFlow]]`) — only for 1-3 key project references, don't rewrite the whole file.
+
 ## Step 5: Sync Project Phases
 
 When a card moves to the terminal (completed) status, check if it maps to a project phase. If so, update the phase:

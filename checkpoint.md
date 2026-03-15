@@ -174,6 +174,39 @@ If nothing is worth promoting, skip this step and note "No new long-term memorie
 
 ## Step 8: Write Obsidian Vault Note
 
+All files written to the vault in this step must follow the **Obsidian linking conventions** below. These conventions build a connected graph in Obsidian and prepare the vault for future vector DB + graph-aware retrieval.
+
+### Obsidian Linking Conventions
+
+**Frontmatter:** Every vault file gets YAML frontmatter:
+
+```yaml
+---
+type: summary | session | plan          # what kind of file this is
+project: noteflow                        # primary project (if applicable)
+card: mc-016                             # MC card slug (if applicable)
+date: 2026-03-12                         # date of the work
+tags: [noteflow, cc-remote]              # all projects touched (for summaries)
+---
+```
+
+- `type`, `date` are always required
+- `project` and `card` — include when the file is about a specific card/project
+- `tags` — for summaries, list all projects mentioned; for session/plan files, list the primary project
+
+**Wikilinks:** Use `[[double brackets]]` to link to other vault files. Rules:
+
+1. **Link plan names** when referencing work done on a card: `[[stack-task-pool-sidebar]]`, `[[contentflow-ingestion-skill]]` — use the plan filename without `.md`
+2. **Link project hub notes** when referencing a project: `[[NoteFlow]]`, `[[CC-Remote]]`, `[[MissionControl]]` — these hubs may not exist yet, and that's fine (Obsidian shows them as unresolved links, ready to be created later)
+3. **Use typed context** around links — the surrounding words give the link meaning:
+   - "Finished [[stack-task-pool-sidebar]]" — completion relationship
+   - "Started [[noteflow-update-system]]" — began work
+   - "Blocked by [[heartbeat-v2]]" — dependency
+   - "Supersedes [[token-optimization-v1]]" — evolution
+   - "Related: [[skill-architecture-standardization]]" — lateral connection
+4. **Don't over-link** — link cards/plans that had meaningful status changes or decisions, not every passing mention. For summaries, aim for 3-8 links per checkpoint block. For session files, 1-3 links.
+5. **Link between plan files** — when archiving a plan to `OpenClaw/`, add a "Related" section at the bottom linking to dependency/prerequisite/superseded plans if the relationship is clear from board.json
+
 ### 8a. Migrate flat daily files
 
 Check `~/.openclaw/vaults/Claw/Daily/` for any flat `YYYY-MM-DD.md` files. For each one found, move it into a date folder:
@@ -217,25 +250,33 @@ If the file doesn't exist, create it. If it already exists (previous checkpoint 
 ### Format:
 
 ```markdown
+---
+type: summary
+date: YYYY-MM-DD
+tags: [project1, project2, ...]
+---
+
 # YYYY-MM-DD
 
 ## Checkpoint: HH:MM CT
 
 ### What We Worked On
-Narrative summary of all work since the last checkpoint — what was built, discussed, and solved across all sessions. Write in first-person plural ("we built...", "we decided..."). Include enough context that reading this months later still makes sense.
+Narrative summary using [[wikilinks]] to reference plans worked on. Example: "We finished [[stack-task-pool-sidebar]] and started [[noteflow-update-system]]." Write in first-person plural. Include enough context that reading this months later still makes sense.
 
 ### Project Status
-Brief status of each active project. Where things stand right now.
+Brief status of each active project, linking to project hubs: "**[[NoteFlow]]**: Update system complete."
 
 ### Ideas & Threads
-Open ideas, future directions discussed, things to explore later. Capture the creative/strategic thinking, not just the task list.
+Open ideas, future directions discussed, things to explore later. Link to relevant plans or projects where applicable.
 
 ### Decisions
-Key decisions made and the reasoning behind them.
+Key decisions made and the reasoning behind them. Link to the plan the decision affects.
 
 ### Next Up
-What's queued next.
+What's queued next, with links to the relevant plans.
 ```
+
+Frontmatter goes at the very top of the file (only on initial creation, not when appending a second checkpoint block to an existing file). The `tags` array lists all project names mentioned in this checkpoint.
 
 ### Rules:
 - Write for the **future reader** — assume no recent context
@@ -244,19 +285,24 @@ What's queued next.
 - Keep it concise but complete — aim for a 2-minute read
 - Use natural language, not bullet-point soup
 - **Incorporate session file details** — they capture real-time work entries that git diffs miss
+- **Use wikilinks per the Obsidian Linking Conventions above** — link plans that had meaningful progress, not every passing mention
 
-## Step 9: Sweep Session Files
+## Step 9: Enrich and Sweep Session Files
 
-Move session files into today's Obsidian date folder so they're archived alongside the summary.
+Enrich session files with frontmatter and wikilinks, then move them into the vault.
 
 1. Check if `~/.openclaw/workspace/sessions/` exists and has `.md` files
-2. If yes:
+2. If yes, **read each session file** and prepend frontmatter + add wikilinks:
+   - Add YAML frontmatter: `type: session`, `date`, `project` (inferred from content or card reference), `card` (if the file references a specific MC card slug like `mc-016`)
+   - Add wikilinks within the existing content where plan names or project names appear naturally — e.g., wrap existing references like "cc-daemon.py" in context linking to `[[cc-remote-handoff-mode]]` if that's the plan being worked on
+   - Don't rewrite the session file — just prepend frontmatter and add links to 1-3 key plan/project references inline
+3. Move enriched files to the vault:
    ```bash
    mkdir -p ~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD
    mv ~/.openclaw/workspace/sessions/*.md ~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD/
    rmdir ~/.openclaw/workspace/sessions/
    ```
-3. If no session files exist, skip silently
+4. If no session files exist, skip silently
 
 The swept files live alongside `summary.md` in the date folder, providing per-task detail that complements the narrative summary.
 
