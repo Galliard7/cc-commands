@@ -97,7 +97,7 @@ python3 ~/skill-backends/noteflow/mc-activity.py --clear-all
 
 ## Step 5: Supplement CC Auto-Memory
 
-msync already updated the **Active Project Summary**. Now review your auto-memory MEMORY.md for broader updates:
+msync already updated the **Active Project Summary** (using the structured Current/Last/Next format). Now review your auto-memory MEMORY.md for broader updates:
 
 - If a major convention or pattern was established, add it to the appropriate section
 - If a new key path was created, add it to **Key Paths**

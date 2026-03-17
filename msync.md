@@ -241,12 +241,21 @@ If `--clear-stale` isn't supported, skip this step silently — activity auto-st
 
 ## Step 10: Update CC Auto-Memory
 
-Update the **Active Project Summary** section in your auto-memory MEMORY.md to reflect current board state:
+Update the **Active Project Summary** section in your auto-memory MEMORY.md to reflect current board state. Each project gets exactly three fields:
+
+```
+- **ProjectName**: [current state — one line: phase, what's working, overall posture]
+  - Last: [most recent meaningful action — what happened, not just "worked on X"]
+  - Next: [specific next card slug or decision — e.g., "mc-116 (profile context layer)" or "decide on storage backend"]
+```
+
+### Rules:
+- **Last** = the most recent action that moved the project forward (a completed card, a key decision, a shipped feature). Not "worked on" — what specifically changed.
+- **Next** = the single most likely next step. Use the card slug if one exists. If multiple cards are pending, pick the one most likely to be worked on next.
 - Update status lines for any project whose cards changed
 - Add new projects if any were created
 - Remove references to projects that no longer exist
-
-Keep it concise — just the project name, current phase/status, and what's next.
+- The goal is **zero-read resume** — a new session should be able to answer "what's next for X?" from this section alone, without reading board.json
 
 ## Step 11: Report
 
