@@ -28,16 +28,16 @@ Distill this into a concise summary of the work.
 
 ## Step 2: Read the Board & Find a Match
 
-Read `workspace/mission-control/board.json`. Examine **all cards** (including `done`).
+Read `workspace/mission-control/board.json`. Examine **non-done cards only** (active, pending, backlog, blocked).
 
-For each card, compare its `title`, `description`, `project`, and `comments` against the current session's work. Look for:
+**Do NOT match `done` cards** unless the user's prompt explicitly references a completed card by name, slug, or ID. Done cards are finished — new work gets a new card or links to a live one.
+
+For each non-done card, compare its `title`, `description`, `project`, and `comments` against the current session's work. Look for:
 - **Direct match** — the card describes the same work being done now (even if worded differently)
 - **Superset match** — the card covers a broader scope that includes this work
 - **Subset match** — the card covers part of what's being done
 
 **Matching is generous** — if the session work reasonably falls under an existing card's umbrella, that's a match. Prefer false positives (updating an existing card) over false negatives (creating a duplicate).
-
-**Priority:** If multiple cards match, prefer non-done cards over done cards. Only match a `done` card when no live (active/pending/backlog/blocked) card covers the work.
 
 ### If a match is found → go to Step 3 (Update Existing Card)
 ### If no match → go to Step 4 (Create New Card)

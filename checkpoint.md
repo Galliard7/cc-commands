@@ -217,8 +217,8 @@ for f in ????-??-??.md; do
   [ -f "$f" ] || continue
   dir="${f%.md}"
   mkdir -p "$dir"
-  mv "$f" "$dir/summary.md"
-  echo "Migrated $f → $dir/summary.md"
+  mv "$f" "$dir/summary-${dir}.md"
+  echo "Migrated $f → $dir/summary-${dir}.md"
 done
 ```
 
@@ -236,7 +236,7 @@ If session files exist, read each one. Use their content as **primary input** al
 
 ### 8c. Write summary
 
-**File:** `~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD/summary.md` (using today's date)
+**File:** `~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD/summary-YYYY-MM-DD.md` (using today's date)
 
 Ensure the date folder exists:
 ```bash
@@ -304,7 +304,7 @@ Enrich session files with frontmatter and wikilinks, then move them into the vau
    ```
 4. If no session files exist, skip silently
 
-The swept files live alongside `summary.md` in the date folder, providing per-task detail that complements the narrative summary.
+The swept files live alongside `summary-YYYY-MM-DD.md` in the date folder, providing per-task detail that complements the narrative summary.
 
 ## Step 10: Update Reference Docs
 
@@ -409,7 +409,7 @@ Updated:
 - CC memory — [what changed beyond Active Project Summary]
 - Daily note — [created/appended] workspace/memory/YYYY-MM-DD.md
 - Long-term memory — [what was added/updated/removed, or "no changes"]
-- Vault note — [created/appended] vaults/Claw/Daily/YYYY-MM-DD/summary.md
+- Vault note — [created/appended] vaults/Claw/Daily/YYYY-MM-DD/summary-YYYY-MM-DD.md
 - Sessions — swept N file(s) to vaults/Claw/Daily/YYYY-MM-DD/ [or "no session files"]
 - Flat file migration — migrated N file(s) [or "none needed"]
 - Reference docs — [which ones, if any]
