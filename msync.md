@@ -192,7 +192,7 @@ For each match: find the relevant existing card and add a progress comment via `
 
 Review the current conversation and git evidence for scoped, actionable work that should have a card but doesn't:
 - Create a new card and plan file via `mc_lib` or direct board.json edit
-- Plan files go in `workspace/mission-control/plans/`
+- Plan files go in `workspace/projects/{project-id}/plans/`
 - Use kebab-case for plan file names
 
 Only create cards for scoped, actionable work — not exploratory discussion or one-off fixes.
@@ -225,7 +225,7 @@ For each card where `project` is `null`:
 ## Step 8: Detect Orphans
 
 Check for inconsistencies:
-- **Plan files without cards:** Scan `workspace/mission-control/plans/*.md` — any file not referenced by a card's `plan_file` field is an orphan. Report it.
+- **Plan files without cards:** Scan `workspace/projects/*/plans/*.md` — any file not referenced by a card's `plan_file` field is an orphan. Report it.
 - **Cards with missing plan files:** Any card whose `plan_file` points to a non-existent file. Report it.
 
 Report orphans but don't auto-fix — let the user decide.
