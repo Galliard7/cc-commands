@@ -23,12 +23,24 @@ Either way, identify:
 - **What the work is** — the primary goal or task
 - **Key details** — technologies, files, features, bugs involved
 - **Scope** — is this a bug fix, feature, refactor, research, infra, etc.?
+- **Completion signal** — does the user's prompt indicate the work is **finished**?
+
+### Completion detection
+
+Check if the user's prompt signals that the task is **done**. Completion signals include:
+- Explicit: "Done", "Finished", "Completed", "Shipped", "Wrapped up", "All done"
+- Contextual: "Done with X", "Finished implementing Y", "X is complete"
+- Past-tense framing that clearly indicates completion: "Built the feature", "Fixed the bug", "Deployed"
+
+**If a completion signal is detected**, set `IS_DONE = true` for the rest of this workflow. The card will be created or moved to `done` status instead of `active`.
+
+**If no completion signal**, set `IS_DONE = false` (default behavior — card stays `active`).
 
 Distill this into a concise summary of the work.
 
 ## Step 2: Read the Board & Find a Match
 
-Read `workspace/mission-control/board.json`. Examine **non-done cards only** (active, pending, backlog, blocked).
+Read `workspace/mission-control/board.json`. Examine **non-done cards first** (active, pending, backlog, blocked).
 
 **Do NOT match `done` cards** unless the user's prompt explicitly references a completed card by name, slug, or ID. Done cards are finished — new work gets a new card or links to a live one.
 
@@ -44,11 +56,28 @@ For each non-done card, compare its `title`, `description`, `project`, and `comm
 
 ## Step 3: Update Existing Card
 
-### 3a. Move to active (if not already — skip for done cards)
+### 3a. Set card status
 
-If the matched card is `done`, **do not reopen it** — skip directly to Step 3b.
+Determine the target status based on `IS_DONE`:
 
-If the matched card is in `pending`, `backlog`, or `blocked` status, move it to `active`:
+**If `IS_DONE = true`**: Move the card to `done`:
+
+```bash
+python3 -c "
+import sys
+sys.path.insert(0, '$HOME/skill-backends/noteflow')
+from mc_lib import load_board, move_card
+
+board = load_board()
+card, err = move_card(board, '<MATCHED-SLUG>', 'done')
+if err:
+    print(f'Error: {err}')
+else:
+    print(f'Moved {card[\"id\"]} to done')
+"
+```
+
+**If `IS_DONE = false`**: Move to `active` if currently in `pending`, `backlog`, or `blocked`. Skip if already `active`. Skip if `done` (don't reopen).
 
 ```bash
 python3 -c "
@@ -64,8 +93,6 @@ else:
     print(f'Moved {card[\"id\"]} to active')
 "
 ```
-
-If already `active`, skip this.
 
 ### 3b. Update description (if needed)
 
@@ -90,7 +117,9 @@ else:
 
 Add a comment summarizing what's being done in this session. Keep it to 1-2 sentences — capture the specific work, not a restatement of the card's purpose.
 
-For `done` cards, prefix the comment with "Follow-up:" to distinguish post-completion updates from in-progress work.
+For `done` cards (either previously done or just moved to done with `IS_DONE`), prefix the comment appropriately:
+- If `IS_DONE = true`: prefix with "Completed:" (e.g., "Completed: implemented X and verified Y")
+- If card was already `done` before this logtask: prefix with "Follow-up:"
 
 ```bash
 python3 ~/skill-backends/noteflow/mc-comment.py \
@@ -135,7 +164,7 @@ If no project fits cleanly, use `None`.
 
 - **Title**: Short, imperative, descriptive. Max ~60 chars.
 - **Description**: 2-4 sentences capturing what's being done and why.
-- **Status**: `active` (this is current work).
+- **Status**: `done` if `IS_DONE = true`, otherwise `active`.
 
 ```bash
 python3 -c "
@@ -148,11 +177,11 @@ card = add_card(
     board,
     title='<TITLE>',
     description='<DESCRIPTION>',
-    status='active',
+    status='<done or active>',
     project=<PROJECT>,  # string or None
 )
 print(f'Created {card[\"id\"]} ({card[\"slug\"]}): {card[\"title\"]}')
-print(f'Status: active | Project: {card[\"project\"] or \"unassigned\"}')
+print(f'Status: {card[\"status\"]} | Project: {card[\"project\"] or \"unassigned\"}')
 "
 ```
 
@@ -165,7 +194,7 @@ python3 ~/skill-backends/noteflow/mc-activity.py \
 
 ## Step 6: Write Session Markdown
 
-Create a local session file that accumulates work entries during the session. These files are swept into the Obsidian vault by `/checkpoint`.
+Create a local session file that accumulates work entries during the session. These files are swept into the Obsidian vault by `/checkpoint` — they land in `~/.openclaw/vaults/Claw/raw/sessions/YYYY-MM-DD/` where they become raw-source feeders for the KB wiki (see `workspace/projects/claw/plans/llm-knowledge-base.md`).
 
 ### 6a. Ensure directory exists
 
@@ -214,9 +243,7 @@ ENTRY
 
 ## Step 7: Push to Stack
 
-**If the matched card is `done`, skip this step entirely** — done cards auto-remove from stack and should not be re-added.
-
-Push a stack card into the Stack tab (via dashboard API at `http://127.0.0.1:8765`) **if one does not already exist** for this board card.
+Push a stack card into the Stack tab (via dashboard API at `http://127.0.0.1:8765`) **if one does not already exist** for this board card. Done cards should also be on the stack — they appear in the "Recently Completed" sidebar.
 
 First, check if a stack item with the matching `boardSlug` already exists:
 
@@ -244,7 +271,7 @@ curl -s -X POST http://127.0.0.1:8765/api/stack \
 
 ## Step 8: Report
 
-**If an existing card was updated (non-done):**
+**If an existing card was updated (non-done, IS_DONE=false):**
 ```
 Logged to existing card:
 - Card: <id> — <title>
@@ -255,7 +282,18 @@ Logged to existing card:
 - Stack: <pushed / already on stack>
 ```
 
-**If a done card was matched (follow-up logged):**
+**If a card was completed (IS_DONE=true):**
+```
+Completed card:
+- Card: <id> — <title>
+- Project: <project or "unassigned">
+- Status: done
+- Updated: <what changed — e.g., "moved to done + completion comment added" or "created as done">
+- Session: <created / appended to> workspace/sessions/<slug>.md
+- Stack: <pushed to Recently Completed / already on stack>
+```
+
+**If a done card was matched (follow-up logged, IS_DONE=false):**
 ```
 Follow-up logged to completed card:
 - Card: <id> — <title>
@@ -263,10 +301,10 @@ Follow-up logged to completed card:
 - Status: done (unchanged)
 - Updated: follow-up comment added
 - Session: <created / appended to> workspace/sessions/<slug>.md
-- Stack: skipped (done)
+- Stack: <pushed / already on stack>
 ```
 
-**If a new card was created:**
+**If a new card was created (IS_DONE=false):**
 ```
 New card created:
 - Card: <id> — <title>

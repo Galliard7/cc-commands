@@ -82,7 +82,7 @@ After running, note any newly created cards — they'll appear in the report (St
 
 | Verdict | Action |
 |---|---|
-| **All criteria met** | Move card to the terminal (completed) status. Archive plan file to `~/.openclaw/vaults/Claw/OpenClaw/`. Add comment via `mc-comment.py`. |
+| **All criteria met** | Move card to the terminal (completed) status. Archive plan file to `~/.openclaw/vaults/Claw/wiki/projects/<project-slug>/plans/` (use the card's `project` field; fall back to `claw` if unassigned). Add comment via `mc-comment.py`. |
 | **Partially done** | Leave in current status. Add comment noting which criteria passed/didn't (only if meaningful progress since last comment). |
 | **Progress made (no status change)** | Leave in current status. Add comment capturing what progress was made — e.g., discussion, decisions, partial implementation, blockers identified. |
 | **No change** | Leave as-is, no comment needed. |
@@ -133,7 +133,10 @@ python3 ~/skill-backends/noteflow/mc-comment.py --plan "<card-slug>" --comment "
 
 ### Obsidian enrichment for archived plan files
 
-When archiving a plan file to `~/.openclaw/vaults/Claw/OpenClaw/`, enrich it before (or after) copying:
+Archive plan files into the KB wiki, organized by project:
+`~/.openclaw/vaults/Claw/wiki/projects/<project-slug>/plans/<plan-slug>.md`
+
+Use the card's `project` field to choose the destination. If the card has no project, use `claw`. Create the `plans/` subdir if needed. Enrich before (or after) copying:
 
 1. **Prepend YAML frontmatter** (if not already present):
    ```yaml

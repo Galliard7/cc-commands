@@ -207,22 +207,17 @@ tags: [noteflow, cc-remote]              # all projects touched (for summaries)
 4. **Don't over-link** — link cards/plans that had meaningful status changes or decisions, not every passing mention. For summaries, aim for 3-8 links per checkpoint block. For session files, 1-3 links.
 5. **Link between plan files** — when archiving a plan to `OpenClaw/`, add a "Related" section at the bottom linking to dependency/prerequisite/superseded plans if the relationship is clear from board.json
 
-### 8a. Migrate flat daily files
+### 8a. Migrate flat daily files (legacy — no-op on KB-restructured vault)
 
-Check `~/.openclaw/vaults/Claw/Daily/` for any flat `YYYY-MM-DD.md` files. For each one found, move it into a date folder:
+As of 2026-04-05, the vault was restructured for the LLM knowledge base (see `workspace/projects/claw/plans/llm-knowledge-base.md`). Session files now live in `~/.openclaw/vaults/Claw/raw/sessions/YYYY-MM-DD/`. The old `Daily/` tree no longer exists. If `Daily/` reappears (e.g., from a restore), migrate it into `raw/sessions/`:
 
 ```bash
-cd ~/.openclaw/vaults/Claw/Daily
-for f in ????-??-??.md; do
-  [ -f "$f" ] || continue
-  dir="${f%.md}"
-  mkdir -p "$dir"
-  mv "$f" "$dir/summary-${dir}.md"
-  echo "Migrated $f → $dir/summary-${dir}.md"
-done
+if [ -d ~/.openclaw/vaults/Claw/Daily ]; then
+  mkdir -p ~/.openclaw/vaults/Claw/raw/sessions
+  mv ~/.openclaw/vaults/Claw/Daily/* ~/.openclaw/vaults/Claw/raw/sessions/ 2>/dev/null
+  rmdir ~/.openclaw/vaults/Claw/Daily 2>/dev/null
+fi
 ```
-
-This is a no-op after the first run (no flat files left to move).
 
 ### 8b. Read session files
 
@@ -236,12 +231,14 @@ If session files exist, read each one. Use their content as **primary input** al
 
 ### 8c. Write summary
 
-**File:** `~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD/summary-YYYY-MM-DD.md` (using today's date)
+**File:** `~/.openclaw/vaults/Claw/raw/sessions/YYYY-MM-DD/summary-YYYY-MM-DD.md` (using today's date)
 
 Ensure the date folder exists:
 ```bash
-mkdir -p ~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD
+mkdir -p ~/.openclaw/vaults/Claw/raw/sessions/YYYY-MM-DD
 ```
+
+This file becomes a raw-source feeder for the KB wiki. `kb-compile` can later ingest it into `wiki/projects/{slug}/` pages.
 
 Write a **human-readable journal** covering all work since the last checkpoint. This is a narrative briefing, not a mechanical status dump. Use session files (if any) to add detail and specificity.
 
@@ -298,13 +295,13 @@ Enrich session files with frontmatter and wikilinks, then move them into the vau
    - Don't rewrite the session file — just prepend frontmatter and add links to 1-3 key plan/project references inline
 3. Move enriched files to the vault:
    ```bash
-   mkdir -p ~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD
-   mv ~/.openclaw/workspace/sessions/*.md ~/.openclaw/vaults/Claw/Daily/YYYY-MM-DD/
+   mkdir -p ~/.openclaw/vaults/Claw/raw/sessions/YYYY-MM-DD
+   mv ~/.openclaw/workspace/sessions/*.md ~/.openclaw/vaults/Claw/raw/sessions/YYYY-MM-DD/
    rmdir ~/.openclaw/workspace/sessions/
    ```
 4. If no session files exist, skip silently
 
-The swept files live alongside `summary-YYYY-MM-DD.md` in the date folder, providing per-task detail that complements the narrative summary.
+The swept files live alongside `summary-YYYY-MM-DD.md` in the date folder, providing per-task detail that complements the narrative summary. They are raw-source input for the KB wiki.
 
 ## Step 10: Update Reference Docs
 
@@ -345,11 +342,88 @@ Check these files and trim if they exceed the stated limits:
 
 Only trim if actually over the limit. Use your judgment about what to cut.
 
-## Step 12: Commit and Push All Repos
+## Step 12: Knowledge Base Compile
+
+Compile any raw sources that have landed in `~/.openclaw/vaults/Claw/raw/` since the last KB compile — **not just the session files swept in Step 9**, but anything new in `raw/articles/`, `raw/papers/`, `raw/clips/`, `raw/transcripts/`, or `raw/sessions/` (Web Clipper saves, `/kb-add` captures, Telegram shares, direct drops). This is what makes the wiki compound over time.
+
+The knowledge base is the LLM-compiled Obsidian wiki at `~/.openclaw/vaults/Claw/`. See `workspace/projects/claw/plans/llm-knowledge-base.md` for the full design and `~/skill-backends/knowledgebase/SKILL.md` for the authoritative ingest protocol.
+
+### 12a. Find uncompiled sources
+
+```bash
+python3 ~/skill-backends/knowledgebase/kb-compile.py --list-uncompiled
+```
+
+This scans `raw/**` and lists every file not yet recorded in `source-map.json`.
+
+### 12b. Decide batch size
+
+Ingest is expensive (one LLM read + multiple wiki writes per source). Apply these guardrails:
+
+| Uncompiled count | Action |
+|---|---|
+| 0 | Skip. Report "KB: nothing to compile." |
+| 1–8 | Compile **all** inline in this checkpoint. |
+| 9–20 | Compile the **top 10** by recency. Prioritize: (1) today's session files, (2) yesterday's session files, (3) articles/papers/clips/transcripts captured in the last 3 days, (4) older items. Log the deferred remainder to the report. |
+| 21+ | Compile **only today's `raw/sessions/YYYY-MM-DD/*.md`**. Warn the user in the report: "KB backlog is N sources — run `/kb-compile --all-new` in a dedicated session to catch up." |
+
+Sort by file modification time (`stat -f %m` on macOS) when picking the newest.
+
+### 12c. Read schema + protocol (once per checkpoint)
+
+Before the first compile in this checkpoint, read:
+1. `~/.openclaw/vaults/Claw/schema.md` — wiki conventions (frontmatter, naming, cross-linking)
+2. The **Ingest Protocol** section of `~/skill-backends/knowledgebase/SKILL.md` — Steps 1–7
+
+Skip if already loaded earlier in this session.
+
+### 12d. For each source in the batch
+
+Follow the ingest protocol:
+
+1. **Drive** — `python3 ~/skill-backends/knowledgebase/kb-compile.py --source <rel-path>` prints the source path and protocol reminder
+2. **Read** — use the Read tool on the raw source in full
+3. **Search first** — `python3 ~/skill-backends/knowledgebase/kb-query.py "<candidate page name>"` to avoid duplicates
+4. **Classify** — what is it, what entities/concepts, which project(s)? Use `kb_lib.PROJECTS` for the canonical list
+5. **Write pages** — create or update under `wiki/concepts/`, `wiki/entities/`, `wiki/projects/<slug>/`, `wiki/research/<topic>/`, or `wiki/synthesis/` as appropriate. Every page gets proper frontmatter (`type`, `title`, `created`, `updated`, `sources`, `tags`) and inline `(Source: [[raw/...]])` citations. Kebab-case filenames.
+6. **Cross-link** — wikilink entities, concepts, projects, related pages
+7. **Record** — `python3 ~/skill-backends/knowledgebase/kb-compile.py --source <rel-path> --record <page1> <page2> ...`
+
+Recording automatically rebuilds the `_index.md` for touched sections and appends to `log.md`.
+
+### 12e. Session-file priority rules
+
+Session files (`raw/sessions/YYYY-MM-DD/*.md`) are the highest-volume feeder and compile differently from articles:
+
+- **Summary files (`summary-YYYY-MM-DD.md`)** — extract key decisions, new concepts introduced, project status changes, blockers resolved. Update `wiki/projects/<slug>/_index.md` "Recent activity" with a dated bullet. Create new concept/entity pages only for *new* ideas (not re-mentions).
+- **Task files (`task-<slug>.md` or `<card-slug>.md`)** — append a dated entry under the matching `wiki/projects/<slug>/plans/<card-slug>.md` in a "Session notes" section (create the section if absent). Do **not** create new concept pages from task files unless they introduce something genuinely new — task files are granular and noisy.
+
+### 12f. Batch report
+
+After the batch is done, run:
+```bash
+python3 ~/skill-backends/knowledgebase/kb-index.py
+python3 ~/skill-backends/knowledgebase/kb-log.py --op compile --subject "checkpoint-batch" --details "<N sources, M pages>"
+```
+
+Track counts to include in Step 14's report:
+- Sources compiled (by category: sessions/articles/papers/clips/transcripts)
+- Pages created
+- Pages updated
+- Sources deferred (if any)
+
+### 12g. Skip conditions
+
+Skip Step 12 entirely if:
+- `--list-uncompiled` returns nothing
+- The checkpoint itself is a "nothing changed" checkpoint (Step 1 found no diffs)
+- The user explicitly passed `--no-kb` in `$ARGUMENTS`
+
+## Step 13: Commit and Push All Repos
 
 Commit and push **every repo with changes** — workspace, skill backends, and standalone repos.
 
-### 12a. Workspace repo
+### 13a. Workspace repo
 ```bash
 cd ~/.openclaw/workspace
 git add -A
@@ -361,7 +435,7 @@ git commit -m "checkpoint: YYYY-MM-DD — [1-line summary of key changes]"
 git push
 ```
 
-### 12b. All code repos
+### 13b. All code repos
 For each repo, check for uncommitted changes and push:
 ```bash
 for repo in ~/skill-backends/*/ ~/repos/*/; do
@@ -383,7 +457,7 @@ done
 
 Skip repos with no changes and no unpushed commits.
 
-## Step 13: Report Summary
+## Step 14: Report Summary
 
 Print a confirmation in this format:
 
@@ -410,9 +484,10 @@ Updated:
 - Daily note — [created/appended] workspace/memory/YYYY-MM-DD.md
 - Long-term memory — [what was added/updated/removed, or "no changes"]
 - Vault note — [created/appended] vaults/Claw/Daily/YYYY-MM-DD/summary-YYYY-MM-DD.md
-- Sessions — swept N file(s) to vaults/Claw/Daily/YYYY-MM-DD/ [or "no session files"]
+- Sessions — swept N file(s) to vaults/Claw/raw/sessions/YYYY-MM-DD/ [or "no session files"]
 - Flat file migration — migrated N file(s) [or "none needed"]
 - Reference docs — [which ones, if any]
+- KB compile — compiled N source(s) → M page(s) created, K updated; deferred: X [or "nothing to compile" or "skipped (--no-kb)"]
 - Git — workspace: [committed and pushed / no changes]; backends: [list repos pushed, or "no changes"]
 
 No changes:
