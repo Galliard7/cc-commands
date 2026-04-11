@@ -342,11 +342,13 @@ Check these files and trim if they exceed the stated limits:
 
 Only trim if actually over the limit. Use your judgment about what to cut.
 
-## Step 12: Knowledge Base Compile
+## Step 12: Knowledge Base Compile (delegated to Sonnet subagent)
 
 Compile any raw sources that have landed in `~/.openclaw/vaults/Claw/raw/` since the last KB compile — **not just the session files swept in Step 9**, but anything new in `raw/articles/`, `raw/papers/`, `raw/clips/`, `raw/transcripts/`, or `raw/sessions/` (Web Clipper saves, `/kb-add` captures, Telegram shares, direct drops). This is what makes the wiki compound over time.
 
 The knowledge base is the LLM-compiled Obsidian wiki at `~/.openclaw/vaults/Claw/`. See `workspace/projects/claw/plans/llm-knowledge-base.md` for the full design and `~/skill-backends/knowledgebase/SKILL.md` for the authoritative ingest protocol.
+
+**This step ALWAYS delegates to a Sonnet subagent via the Agent tool** — never compile inline on the main checkpoint thread. Reasons: (1) keeps the main thread's context clean for the rest of the checkpoint, (2) Sonnet is faster and cheaper than Opus for this structured protocol-driven work, (3) consistent behavior regardless of backlog size, (4) the `source-map.json` persistence means even a failed subagent run is resumable on the next checkpoint.
 
 ### 12a. Find uncompiled sources
 
@@ -356,68 +358,150 @@ python3 ~/skill-backends/knowledgebase/kb-compile.py --list-uncompiled
 
 This scans `raw/**` and lists every file not yet recorded in `source-map.json`.
 
-### 12b. Decide batch size
+### 12b. Skip conditions
 
-Ingest is expensive (one LLM read + multiple wiki writes per source). Apply these guardrails:
+Skip Step 12 entirely (no subagent spawn) if ANY of these are true:
+- `--list-uncompiled` returns 0 sources → report "KB: nothing to compile."
+- The checkpoint itself is a "nothing changed" checkpoint (Step 1 found no diffs) **AND** backlog is 0
+- The user explicitly passed `--no-kb` in `$ARGUMENTS` → report "KB: skipped (--no-kb)"
 
-| Uncompiled count | Action |
-|---|---|
-| 0 | Skip. Report "KB: nothing to compile." |
-| 1–8 | Compile **all** inline in this checkpoint. |
-| 9–20 | Compile the **top 10** by recency. Prioritize: (1) today's session files, (2) yesterday's session files, (3) articles/papers/clips/transcripts captured in the last 3 days, (4) older items. Log the deferred remainder to the report. |
-| 21+ | Compile **only today's `raw/sessions/YYYY-MM-DD/*.md`**. Warn the user in the report: "KB backlog is N sources — run `/kb-compile --all-new` in a dedicated session to catch up." |
+Note: do NOT skip just because Step 1 found no git diffs. Non-git sources (Web Clipper saves, `/kb-add` captures, Telegram shares) land in `raw/` without touching any git repo, and the checkpoint is the only thing that picks them up. Only skip on "no diffs" if the backlog is also empty.
 
-Sort by file modification time (`stat -f %m` on macOS) when picking the newest.
+### 12c. Soft warning at high volume
 
-### 12c. Read schema + protocol (once per checkpoint)
+If backlog is >50 sources, include a note in the subagent spawn message and the final Step 14 report: "KB compile processing N sources — this may take several minutes." This is a UX courtesy, not a gate. The subagent still runs the full batch.
 
-Before the first compile in this checkpoint, read:
-1. `~/.openclaw/vaults/Claw/schema.md` — wiki conventions (frontmatter, naming, cross-linking)
-2. The **Ingest Protocol** section of `~/skill-backends/knowledgebase/SKILL.md` — Steps 1–7
+There is **no hard size limit**. The subagent processes everything. Historical note: an earlier version of this command had a 21+ defer rule that caused permanent backlog accumulation — removed 2026-04-11 in favor of always-delegate.
 
-Skip if already loaded earlier in this session.
+### 12d. Spawn the Sonnet compile worker
 
-### 12d. For each source in the batch
+Use the Agent tool with `subagent_type: general-purpose`, `model: sonnet`, and the prompt template below. Do not omit any section of the prompt — the subagent runs with a fresh context and needs the full protocol inline.
 
-Follow the ingest protocol:
+**Agent tool call:**
+- `subagent_type`: `general-purpose`
+- `model`: `sonnet`
+- `description`: `KB compile — <N> uncompiled sources`
+- `prompt`: (use the template below, substituting `<N>` with the actual backlog count)
 
-1. **Drive** — `python3 ~/skill-backends/knowledgebase/kb-compile.py --source <rel-path>` prints the source path and protocol reminder
-2. **Read** — use the Read tool on the raw source in full
-3. **Search first** — `python3 ~/skill-backends/knowledgebase/kb-query.py "<candidate page name>"` to avoid duplicates
-4. **Classify** — what is it, what entities/concepts, which project(s)? Use `kb_lib.PROJECTS` for the canonical list
-5. **Write pages** — create or update under `wiki/concepts/`, `wiki/entities/`, `wiki/projects/<slug>/`, `wiki/research/<topic>/`, or `wiki/synthesis/` as appropriate. Every page gets proper frontmatter (`type`, `title`, `created`, `updated`, `sources`, `tags`) and inline `(Source: [[raw/...]])` citations. Kebab-case filenames.
-6. **Cross-link** — wikilink entities, concepts, projects, related pages
-7. **Record** — `python3 ~/skill-backends/knowledgebase/kb-compile.py --source <rel-path> --record <page1> <page2> ...`
+**Prompt template:**
 
-Recording automatically rebuilds the `_index.md` for touched sections and appends to `log.md`.
+```
+You are running a knowledge-base compile for the Claw Obsidian wiki. There are <N> uncompiled raw sources and you need to process ALL of them per the ingest protocol. Work to completion — don't stop early, don't ask questions, don't leave things half-done. If you hit an error on a specific source, log it, skip that source, and continue.
 
-### 12e. Session-file priority rules
+## Your environment
+- Vault root: `~/.openclaw/vaults/Claw/`
+- Raw sources: `~/.openclaw/vaults/Claw/raw/` (sessions/, articles/, papers/, clips/, transcripts/)
+- Compiled wiki: `~/.openclaw/vaults/Claw/wiki/` (concepts/, entities/, projects/, research/, synthesis/, _master-index.md)
+- Schema: `~/.openclaw/vaults/Claw/schema.md` — READ THIS FIRST, it defines frontmatter, naming, cross-linking conventions
+- Ingest protocol: `~/skill-backends/knowledgebase/SKILL.md` — READ STEPS 1-7 SECOND, authoritative ingest process
+- KB scripts: `~/skill-backends/knowledgebase/kb-*.py` — use these, don't bypass them
+- Mission Control board for project context: `~/.openclaw/workspace/mission-control/board.json`
+- Project slug list: `kb_lib.PROJECTS` (import from `~/skill-backends/knowledgebase/kb_lib.py`)
 
-Session files (`raw/sessions/YYYY-MM-DD/*.md`) are the highest-volume feeder and compile differently from articles:
+## Step 0: One-time setup (do once, not per source)
+1. Read `~/.openclaw/vaults/Claw/schema.md` in full
+2. Read `~/skill-backends/knowledgebase/SKILL.md` — specifically the Ingest Protocol steps 1-7
+3. Run `python3 ~/skill-backends/knowledgebase/kb-compile.py --list-uncompiled` to get the full list
+4. Glance at `~/.openclaw/vaults/Claw/wiki/_master-index.md` and one existing page in each category (`wiki/concepts/`, `wiki/entities/`, `wiki/projects/*/`) to understand existing conventions before writing
 
-- **Summary files (`summary-YYYY-MM-DD.md`)** — extract key decisions, new concepts introduced, project status changes, blockers resolved. Update `wiki/projects/<slug>/_index.md` "Recent activity" with a dated bullet. Create new concept/entity pages only for *new* ideas (not re-mentions).
-- **Task files (`task-<slug>.md` or `<card-slug>.md`)** — append a dated entry under the matching `wiki/projects/<slug>/plans/<card-slug>.md` in a "Session notes" section (create the section if absent). Do **not** create new concept pages from task files unless they introduce something genuinely new — task files are granular and noisy.
+## Per-source ingest loop (for each uncompiled source)
 
-### 12f. Batch report
+1. **Drive** — `python3 ~/skill-backends/knowledgebase/kb-compile.py --source <rel-path>` (prints source + reminder)
+2. **Read** — Use the Read tool on the raw source file in full
+3. **Search first** — `python3 ~/skill-backends/knowledgebase/kb-query.py "<candidate page name>"` to avoid duplicates. Do this BEFORE writing any new page.
+4. **Classify** — what kind of source is it? what entities/concepts/decisions does it contain? which project(s) does it belong to (common slugs: claw, noteflow, missioncontrol, cc-remote, contentflow, dataflow, career, tradeflow, trader, flow, gemma4good, tutor)?
+5. **Write pages** — Create or update pages under the appropriate directory:
+   - `wiki/concepts/` — general concepts, patterns, techniques
+   - `wiki/entities/` — specific named things (tools, libraries, people, systems)
+   - `wiki/projects/<slug>/` — project-specific pages, with `plans/` subdir for plan notes
+   - `wiki/research/<topic>/` — research topic deep-dives
+   - `wiki/synthesis/` — cross-cutting syntheses that tie multiple sources together
 
-After the batch is done, run:
-```bash
-python3 ~/skill-backends/knowledgebase/kb-index.py
-python3 ~/skill-backends/knowledgebase/kb-log.py --op compile --subject "checkpoint-batch" --details "<N sources, M pages>"
+   Every page MUST have proper frontmatter:
+   ```yaml
+   ---
+   type: concept | entity | project | plan | research | synthesis
+   title: <Page Title>
+   created: <today>
+   updated: <today>
+   sources:
+     - raw/sessions/YYYY-MM-DD/foo.md
+   tags: [project-slug, topic]
+   ---
+   ```
+   Use kebab-case for filenames. Add inline `(Source: [[raw/sessions/YYYY-MM-DD/foo]])` citations when making factual claims.
+6. **Cross-link** — wikilink entities, concepts, projects, and related pages using `[[double-brackets]]`. Pages shouldn't be islands.
+7. **Record** — `python3 ~/skill-backends/knowledgebase/kb-compile.py --source <rel-path> --record <page1> <page2> ...` — this automatically rebuilds the touched section's `_index.md` and appends to `log.md`. Pass relative paths from vault root.
+
+## CRITICAL: Session-file special rules
+
+Session files (`raw/sessions/YYYY-MM-DD/*.md`) are the highest-volume feeder and compile DIFFERENTLY from articles:
+
+- **Summary files (`summary-YYYY-MM-DD.md`)**: Extract KEY decisions, NEW concepts introduced, project status changes, blockers resolved. Update `wiki/projects/<slug>/_index.md` "Recent activity" section with a dated bullet (create the section if it doesn't exist). ONLY create new concept/entity pages for *genuinely new* ideas (not re-mentions of existing concepts). Summary files typically touch 3-8 pages.
+
+- **Task files (`task-<slug>.md` or named after a card slug like `neetcode-150-mission-control-tab.md`)**: APPEND a dated entry under the matching `wiki/projects/<slug>/plans/<card-slug>.md` file in a "Session notes" section (create the section if absent, create the plan page if it doesn't exist — use the card's title as page title and look up the card in board.json for context). Do NOT create new concept/entity pages from task files unless they introduce something genuinely new. Task files are granular and noisy — resist the urge to over-compile. A task file typically records to 1-2 pages.
+
+- **Non-session sources** (articles, papers, clips, transcripts): Follow the full protocol — create concept/entity pages freely, add to research/ for deep-dives, synthesize.
+
+## Batch strategy
+
+Process sources in the order `--list-uncompiled` returns them (chronological by date folder). Newer summary files often reference earlier work, so earlier files should exist in the wiki before the summaries that reference them.
+
+Report progress every 20 sources with a one-line summary: "Processed N/<total> — X pages created, Y updated, Z sources skipped."
+
+If you hit an error on a specific source, log the error, skip that source, and continue. Don't stop the whole batch for one bad source.
+
+## After the batch is complete
+
+1. Run `python3 ~/skill-backends/knowledgebase/kb-index.py` — rebuilds all indexes
+2. Run `python3 ~/skill-backends/knowledgebase/kb-stats.py` — prints final stats
+3. Run `python3 ~/skill-backends/knowledgebase/kb-log.py --op compile --subject "checkpoint-<YYYY-MM-DD>" --details "<N sources compiled, M pages created, K pages updated, X skipped>"`
+4. Run `python3 ~/skill-backends/knowledgebase/kb-lint.py` — report any issues but don't try to fix them all
+
+## Final report format (return this to the caller)
+
+```
+KB compile complete.
+
+Sources processed: N/<total>
+- Sessions: X (summary) + Y (task)
+- Articles: Z
+- Papers: Z
+- Clips: Z
+- Transcripts: Z
+- Skipped/errored: W (with brief reason per source)
+
+Pages created: M
+- concepts/: ...
+- entities/: ...
+- projects/<slug>/: ...
+- research/: ...
+- synthesis/: ...
+
+Pages updated: K
+
+Notable new concepts/entities: [list 5-10 most important, or "none notable" for routine batches]
+
+Lint results: [summary from kb-lint]
 ```
 
-Track counts to include in Step 14's report:
-- Sources compiled (by category: sessions/articles/papers/clips/transcripts)
-- Pages created
-- Pages updated
-- Sources deferred (if any)
+## Rules
 
-### 12g. Skip conditions
+- **Work to completion.** All sources processed before you stop.
+- **Use the scripts.** Always `kb-compile --record` to register sources. Don't write directly to source-map.json or log.md.
+- **Trust existing pages.** If `kb-query` returns a hit, update the existing page (add new citation, new content) rather than creating a duplicate.
+- **Don't over-compile session files.** They're noisy by design. Extract the signal, skip the noise.
+- **Preserve user's work.** Never delete existing wiki pages. Only create or update.
+- **No conversational fluff.** Pages should read like reference material, not chat logs.
 
-Skip Step 12 entirely if:
-- `--list-uncompiled` returns nothing
-- The checkpoint itself is a "nothing changed" checkpoint (Step 1 found no diffs)
-- The user explicitly passed `--no-kb` in `$ARGUMENTS`
+Begin now. No confirmation needed. Work to completion.
+```
+
+### 12e. Incorporate subagent report
+
+After the Sonnet subagent returns, capture its report summary and roll it into Step 14's KB compile line. The subagent handles all the heavy lifting (schema reading, protocol execution, session-file priority rules, kb-index rebuild, kb-lint); the main checkpoint thread just records the outcome.
+
+If the subagent fails or errors out, log the failure but don't fail the whole checkpoint — the next checkpoint will resume from `source-map.json` automatically. Note the failure in Step 14's report with enough detail for the user to debug.
 
 ## Step 13: Commit and Push All Repos
 
@@ -487,7 +571,7 @@ Updated:
 - Sessions — swept N file(s) to vaults/Claw/raw/sessions/YYYY-MM-DD/ [or "no session files"]
 - Flat file migration — migrated N file(s) [or "none needed"]
 - Reference docs — [which ones, if any]
-- KB compile — compiled N source(s) → M page(s) created, K updated; deferred: X [or "nothing to compile" or "skipped (--no-kb)"]
+- KB compile — Sonnet subagent processed N source(s) → M page(s) created, K updated [or "nothing to compile" or "skipped (--no-kb)" or "subagent failed: <reason>, next checkpoint will resume"]
 - Git — workspace: [committed and pushed / no changes]; backends: [list repos pushed, or "no changes"]
 
 No changes:
