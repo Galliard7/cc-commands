@@ -242,23 +242,18 @@ python3 ~/skill-backends/noteflow/mc-activity.py --clear-stale
 
 If `--clear-stale` isn't supported, skip this step silently — activity auto-stale handles it.
 
-## Step 10: Update CC Auto-Memory
+## Step 10: Supplement CC Auto-Memory (if warranted)
 
-Update the **Active Project Summary** section in your auto-memory MEMORY.md to reflect current board state. Each project gets exactly three fields:
+Review whether the board sync revealed anything worth saving to CC auto-memory. CC auto-memory uses individual files at `~/.claude/projects/-Users-galliard7--openclaw-workspace/memory/` with a `MEMORY.md` index.
 
-```
-- **ProjectName**: [current state — one line: phase, what's working, overall posture]
-  - Last: [most recent meaningful action — what happened, not just "worked on X"]
-  - Next: [specific next card slug or decision — e.g., "mc-116 (profile context layer)" or "decide on storage backend"]
-```
+**Do NOT write project status, active cards, or "what's next" to auto-memory** — board.json is the source of truth for that, and sessions should read it on resume.
 
-### Rules:
-- **Last** = the most recent action that moved the project forward (a completed card, a key decision, a shipped feature). Not "worked on" — what specifically changed.
-- **Next** = the single most likely next step. Use the card slug if one exists. If multiple cards are pending, pick the one most likely to be worked on next.
-- Update status lines for any project whose cards changed
-- Add new projects if any were created
-- Remove references to projects that no longer exist
-- The goal is **zero-read resume** — a new session should be able to answer "what's next for X?" from this section alone, without reading board.json
+Only save if one of these applies:
+- A new user preference or feedback pattern was learned
+- A new external reference was discovered
+- A project-level context that isn't derivable from code/git needs to be captured
+
+If nothing qualifies, skip silently.
 
 ## Step 11: Report
 
@@ -316,7 +311,7 @@ The calendar also shows **vault checkpoint notes** (written by `/checkpoint`) an
 ## What This Command Does NOT Do
 
 - Daily notes (`workspace/memory/`)
-- Obsidian vault journal (`vaults/Claw/Daily/`) — this is `/checkpoint`'s job
+- Obsidian vault journal (`vaults/Claw/raw/sessions/`) — this is `/checkpoint`'s job
 - Long-term memory distillation (`workspace/MEMORY.md`)
 - Reference doc updates (`workspace/reference/`)
 - Git commit/push

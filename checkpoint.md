@@ -74,7 +74,7 @@ If **nothing changed** since the last checkpoint (no diffs, no commits, no uncom
 - Project assignment for unassigned cards
 - Orphan detection (plan files without cards, cards with missing plan files)
 - Stale activity cleanup
-- CC auto-memory Active Project Summary update
+- CC auto-memory update (if warranted)
 
 **Checkpoint provides extended range:** msync's own git scan uses a 7-day rolling window. Checkpoint's Step 1 provides the precise range since the last checkpoint. Both are available — use whichever gives the most complete picture. If the last checkpoint was more than 7 days ago, Step 1's diffs are the authoritative source for older changes.
 
@@ -97,17 +97,27 @@ python3 ~/skill-backends/noteflow/mc-activity.py --clear-all
 
 ## Step 5: Supplement CC Auto-Memory
 
-msync already updated the **Active Project Summary** (using the structured Current/Last/Next format). Now review your auto-memory MEMORY.md for broader updates:
+Review whether anything learned since the last checkpoint warrants a new or updated auto-memory entry.
 
-- If a major convention or pattern was established, add it to the appropriate section
-- If a new key path was created, add it to **Key Paths**
-- If technical findings, implementation patterns, or lessons learned are worth remembering across sessions, capture them
+CC auto-memory uses individual files at `~/.claude/projects/-Users-galliard7--openclaw-workspace/memory/` with a `MEMORY.md` index. Each memory file has frontmatter (`name`, `description`, `type`) and content. The index has one-line pointers.
 
-### Rules:
-- Keep the file concise — it's loaded into every conversation context
-- Do NOT duplicate information that's already in board.json
-- Focus on what Claude Code needs to know to resume effectively
-- Do NOT re-update the Active Project Summary — msync handled that
+### What to save (memory types):
+- **user** — user role, preferences, knowledge (rarely changes)
+- **feedback** — corrections or confirmed approaches from the user
+- **project** — ongoing work context not derivable from code/git (convert relative dates to absolute)
+- **reference** — pointers to external systems/resources
+
+### What NOT to save:
+- Project status, active cards, what's next — board.json is the source of truth
+- Code patterns, file paths, architecture — derivable from the codebase
+- Anything already in CLAUDE.md or existing memory files
+
+### Process:
+1. Check if any new memory is warranted (new convention, user correction, external reference learned)
+2. If yes: check existing memory files for one to update before creating a new one
+3. Write/update the individual memory file with proper frontmatter
+4. Update the MEMORY.md index (one-line pointer per entry, under ~150 chars each)
+5. If nothing new, skip silently
 
 ## Step 6: Write Daily Note
 
@@ -337,7 +347,7 @@ Check these files and trim if they exceed the stated limits:
 
 | File | Max Lines | Trim Strategy |
 |---|---|---|
-| CC auto-memory MEMORY.md | ~50 lines | Merge related bullets, remove outdated info |
+| CC auto-memory MEMORY.md (index) | ~200 lines | Remove stale entries, merge related pointers. Individual memory files have no line limit but should be concise. |
 | `workspace/MEMORY.md` | ~100 lines | Archive old entries to daily notes |
 
 Only trim if actually over the limit. Use your judgment about what to cut.
@@ -564,10 +574,10 @@ Board sync (via msync):
 Updated:
 - board.json — [log/decisions additions, if any]
 - Activity — cleared
-- CC memory — [what changed beyond Active Project Summary]
+- CC memory — [new/updated memory files, or "no changes"]
 - Daily note — [created/appended] workspace/memory/YYYY-MM-DD.md
 - Long-term memory — [what was added/updated/removed, or "no changes"]
-- Vault note — [created/appended] vaults/Claw/Daily/YYYY-MM-DD/summary-YYYY-MM-DD.md
+- Vault note — [created/appended] vaults/Claw/raw/sessions/YYYY-MM-DD/summary-YYYY-MM-DD.md
 - Sessions — swept N file(s) to vaults/Claw/raw/sessions/YYYY-MM-DD/ [or "no session files"]
 - Flat file migration — migrated N file(s) [or "none needed"]
 - Reference docs — [which ones, if any]
