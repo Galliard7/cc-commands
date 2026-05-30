@@ -48,7 +48,36 @@ for repo in ~/skill-backends/*/ ~/repos/*/; do
 done
 ```
 
-### 1d. Synthesize
+### 1d. Scan chronicle files
+
+Scan all project directories for CHRONICLE.md entries since the last checkpoint:
+```bash
+for proj in ~/.openclaw/workspace/projects/*/; do
+  [ -f "$proj/CHRONICLE.md" ] && echo "$(basename $proj): $proj/CHRONICLE.md"
+done
+```
+
+Read each CHRONICLE.md found. Extract entries dated **after** the last checkpoint date. Note which projects have new entries and what they cover. If no entries are new, note it and move on.
+
+Also check for chronicles in standalone project dirs:
+```bash
+for proj in ~/projects/*/; do
+  [ -f "$proj/CHRONICLE.md" ] && echo "$(basename $proj): $proj/CHRONICLE.md"
+done
+```
+
+### 1e. Scan changed plan files
+
+Find plan files modified since the last checkpoint:
+```bash
+cd ~/.openclaw/workspace
+git diff <last-checkpoint-hash>..HEAD --name-only -- 'projects/*/plans/*.md'
+git diff --name-only -- 'projects/*/plans/*.md'  # uncommitted changes
+```
+
+Read any changed plan files — these represent evolving project strategy worth capturing in the KB.
+
+### 1f. Synthesize
 
 From all the diffs and logs, identify:
 - Which projects were worked on (across all sessions)
@@ -78,7 +107,7 @@ If **nothing changed** since the last checkpoint (no diffs, no commits, no uncom
 
 **Checkpoint provides extended range:** msync's own git scan uses a 7-day rolling window. Checkpoint's Step 1 provides the precise range since the last checkpoint. Both are available — use whichever gives the most complete picture. If the last checkpoint was more than 7 days ago, Step 1's diffs are the authoritative source for older changes.
 
-**Skip msync's Step 11 (Report)** — checkpoint's own report (Step 13) incorporates msync's findings.
+**Skip msync's Step 11 (Report)** — checkpoint's own report (Step 15) incorporates msync's findings.
 
 ## Step 3: Log and Decisions
 
@@ -99,7 +128,7 @@ python3 ~/skill-backends/noteflow/mc-activity.py --clear-all
 
 Review whether anything learned since the last checkpoint warrants a new or updated auto-memory entry.
 
-CC auto-memory uses individual files at `~/.claude/projects/-Users-galliard7--openclaw-workspace/memory/` with a `MEMORY.md` index. Each memory file has frontmatter (`name`, `description`, `type`) and content. The index has one-line pointers.
+CC auto-memory uses individual files at `~/.claude/projects/-Users-galliard7--openclaw/memory/` with a `MEMORY.md` index. Each memory file has frontmatter (`name`, `description`, `type`) and content. The index has one-line pointers.
 
 ### What to save (memory types):
 - **user** — user role, preferences, knowledge (rarely changes)
@@ -313,7 +342,97 @@ Enrich session files with frontmatter and wikilinks, then move them into the vau
 
 The swept files live alongside `summary-YYYY-MM-DD.md` in the date folder, providing per-task detail that complements the narrative summary. They are raw-source input for the KB wiki.
 
-## Step 10: Update Reference Docs
+## Step 10: Deposit KB Raw Sources
+
+Deposit chronicle digests, changed plan files, and git diff summaries into the KB vault's `raw/` directory. These become additional raw source material for kb-compile (Step 13).
+
+### 10a. Chronicle digests
+
+For each project that had new chronicle entries (from Step 1e), write a digest file:
+
+```bash
+mkdir -p ~/.openclaw/vaults/Claw/raw/chronicles
+```
+
+**File:** `~/.openclaw/vaults/Claw/raw/chronicles/YYYY-MM-DD-{project-slug}.md`
+
+```markdown
+---
+type: chronicle-digest
+project: {slug}
+date: YYYY-MM-DD
+source: workspace/projects/{slug}/CHRONICLE.md
+---
+
+# Chronicle Digest: {Project Name} — YYYY-MM-DD
+
+{Summarize the new chronicle entries since last checkpoint. Preserve the "why" — decisions, pivots, dead ends, lessons learned. Keep the narrative voice from the original entries. 1-3 paragraphs per entry.}
+
+## Entries Covered
+- YYYY-MM-DD — {entry title} `#type-tag`
+- YYYY-MM-DD — {entry title} `#type-tag`
+```
+
+Skip if no new chronicle entries for any project.
+
+### 10b. Changed plan files
+
+For each plan file that changed since last checkpoint (from Step 1f), snapshot it into KB raw:
+
+```bash
+mkdir -p ~/.openclaw/vaults/Claw/raw/plans
+```
+
+**File:** `~/.openclaw/vaults/Claw/raw/plans/YYYY-MM-DD-{plan-filename}`
+
+Copy the changed plan file with a date-prefixed name. Prepend frontmatter if the plan doesn't already have it:
+
+```yaml
+---
+type: plan-snapshot
+project: {slug}
+date: YYYY-MM-DD
+source: workspace/projects/{slug}/plans/{filename}
+---
+```
+
+If the plan already has frontmatter, add `snapshot_date: YYYY-MM-DD` to it instead. Skip if no plan files changed.
+
+### 10c. Git diff summaries
+
+Write a condensed diff summary covering all repos that had changes:
+
+```bash
+mkdir -p ~/.openclaw/vaults/Claw/raw/diffs
+```
+
+**File:** `~/.openclaw/vaults/Claw/raw/diffs/YYYY-MM-DD-diff-summary.md`
+
+```markdown
+---
+type: diff-summary
+date: YYYY-MM-DD
+repos: [workspace, noteflow, knowledgebase, ...]
+---
+
+# Git Diff Summary — YYYY-MM-DD
+
+## workspace
+{Condensed summary: what files changed, what the changes accomplish. Not raw diff output — a human-readable 2-4 sentence summary.}
+
+## {backend-name}
+{Same format per repo with changes.}
+```
+
+This is a **human-readable narrative**, not a paste of `git diff --stat`. Focus on what changed and why, not line counts. Skip if nothing changed.
+
+### Rules:
+- All files in `raw/` are **verbatim captures** — don't edit them after creation
+- Use date-prefixed filenames to avoid collisions across checkpoints
+- Frontmatter is required for kb-compile to classify sources correctly
+- These files feed into Step 13 (KB compile) on the next run
+
+## Step 11: Update Reference Docs
 
 Check whether anything since the last checkpoint changed the OpenClaw setup itself (not just project work). If it did, update the relevant reference doc.
 
@@ -341,7 +460,7 @@ Update the **Changelog** section if any security-relevant change was made:
 - Use targeted edits, don't rewrite
 - Add changelog entries with today's date
 
-## Step 11: Trim Memory Files
+## Step 12: Trim Memory Files
 
 Check these files and trim if they exceed the stated limits:
 
@@ -352,15 +471,15 @@ Check these files and trim if they exceed the stated limits:
 
 Only trim if actually over the limit. Use your judgment about what to cut.
 
-## Step 12: Knowledge Base Compile (delegated to Sonnet subagent)
+## Step 13: Knowledge Base Compile (delegated to Sonnet subagent)
 
-Compile any raw sources that have landed in `~/.openclaw/vaults/Claw/raw/` since the last KB compile — **not just the session files swept in Step 9**, but anything new in `raw/articles/`, `raw/papers/`, `raw/clips/`, `raw/transcripts/`, or `raw/sessions/` (Web Clipper saves, `/kb-add` captures, Telegram shares, direct drops). This is what makes the wiki compound over time.
+Compile any raw sources that have landed in `~/.openclaw/vaults/Claw/raw/` since the last KB compile — **not just the session files swept in Step 9**, but anything new in `raw/articles/`, `raw/papers/`, `raw/clips/`, `raw/transcripts/`, `raw/sessions/`, `raw/chronicles/`, `raw/plans/`, or `raw/diffs/` (Web Clipper saves, `/kb-add` captures, Telegram shares, checkpoint deposits, direct drops). This is what makes the wiki compound over time.
 
 The knowledge base is the LLM-compiled Obsidian wiki at `~/.openclaw/vaults/Claw/`. See `workspace/projects/claw/plans/llm-knowledge-base.md` for the full design and `~/skill-backends/knowledgebase/SKILL.md` for the authoritative ingest protocol.
 
 **This step ALWAYS delegates to a Sonnet subagent via the Agent tool** — never compile inline on the main checkpoint thread. Reasons: (1) keeps the main thread's context clean for the rest of the checkpoint, (2) Sonnet is faster and cheaper than Opus for this structured protocol-driven work, (3) consistent behavior regardless of backlog size, (4) the `source-map.json` persistence means even a failed subagent run is resumable on the next checkpoint.
 
-### 12a. Find uncompiled sources
+### 13a. Find uncompiled sources
 
 ```bash
 python3 ~/skill-backends/knowledgebase/kb-compile.py --list-uncompiled
@@ -368,22 +487,22 @@ python3 ~/skill-backends/knowledgebase/kb-compile.py --list-uncompiled
 
 This scans `raw/**` and lists every file not yet recorded in `source-map.json`.
 
-### 12b. Skip conditions
+### 13b. Skip conditions
 
-Skip Step 12 entirely (no subagent spawn) if ANY of these are true:
+Skip Step 13 entirely (no subagent spawn) if ANY of these are true:
 - `--list-uncompiled` returns 0 sources → report "KB: nothing to compile."
 - The checkpoint itself is a "nothing changed" checkpoint (Step 1 found no diffs) **AND** backlog is 0
 - The user explicitly passed `--no-kb` in `$ARGUMENTS` → report "KB: skipped (--no-kb)"
 
 Note: do NOT skip just because Step 1 found no git diffs. Non-git sources (Web Clipper saves, `/kb-add` captures, Telegram shares) land in `raw/` without touching any git repo, and the checkpoint is the only thing that picks them up. Only skip on "no diffs" if the backlog is also empty.
 
-### 12c. Soft warning at high volume
+### 13c. Soft warning at high volume
 
-If backlog is >50 sources, include a note in the subagent spawn message and the final Step 14 report: "KB compile processing N sources — this may take several minutes." This is a UX courtesy, not a gate. The subagent still runs the full batch.
+If backlog is >50 sources, include a note in the subagent spawn message and the final Step 15 report: "KB compile processing N sources — this may take several minutes." This is a UX courtesy, not a gate. The subagent still runs the full batch.
 
 There is **no hard size limit**. The subagent processes everything. Historical note: an earlier version of this command had a 21+ defer rule that caused permanent backlog accumulation — removed 2026-04-11 in favor of always-delegate.
 
-### 12d. Spawn the Sonnet compile worker
+### 13d. Spawn the Sonnet compile worker
 
 Use the Agent tool with `subagent_type: general-purpose`, `model: sonnet`, and the prompt template below. Do not omit any section of the prompt — the subagent runs with a fresh context and needs the full protocol inline.
 
@@ -400,7 +519,7 @@ You are running a knowledge-base compile for the Claw Obsidian wiki. There are <
 
 ## Your environment
 - Vault root: `~/.openclaw/vaults/Claw/`
-- Raw sources: `~/.openclaw/vaults/Claw/raw/` (sessions/, articles/, papers/, clips/, transcripts/)
+- Raw sources: `~/.openclaw/vaults/Claw/raw/` (sessions/, articles/, papers/, clips/, transcripts/, chronicles/, plans/, diffs/)
 - Compiled wiki: `~/.openclaw/vaults/Claw/wiki/` (concepts/, entities/, projects/, research/, synthesis/, _master-index.md)
 - Schema: `~/.openclaw/vaults/Claw/schema.md` — READ THIS FIRST, it defines frontmatter, naming, cross-linking conventions
 - Ingest protocol: `~/skill-backends/knowledgebase/SKILL.md` — READ STEPS 1-7 SECOND, authoritative ingest process
@@ -451,6 +570,12 @@ Session files (`raw/sessions/YYYY-MM-DD/*.md`) are the highest-volume feeder and
 
 - **Task files (`task-<slug>.md` or named after a card slug like `neetcode-150-mission-control-tab.md`)**: APPEND a dated entry under the matching `wiki/projects/<slug>/plans/<card-slug>.md` file in a "Session notes" section (create the section if absent, create the plan page if it doesn't exist — use the card's title as page title and look up the card in board.json for context). Do NOT create new concept/entity pages from task files unless they introduce something genuinely new. Task files are granular and noisy — resist the urge to over-compile. A task file typically records to 1-2 pages.
 
+- **Chronicle digests (`raw/chronicles/YYYY-MM-DD-{slug}.md`)**: These capture the "why" behind project decisions, pivots, and dead ends. Update the matching `wiki/projects/<slug>/_index.md` with decision/pivot entries. If a chronicle mentions a genuinely new concept or pattern, create a concept page. Chronicle digests are higher-signal than session files — they represent curated narrative, not raw work logs.
+
+- **Plan snapshots (`raw/plans/YYYY-MM-DD-{plan-name}`)**: Update the matching `wiki/projects/<slug>/plans/<plan-name>.md` page with the latest plan state. If the plan page doesn't exist, create it. Plans define project direction — treat them as authoritative for the project's current architecture and goals.
+
+- **Diff summaries (`raw/diffs/YYYY-MM-DD-diff-summary.md`)**: These are context for what changed, not standalone pages. Use them to enrich existing project pages with "Recent changes" context. Don't create new pages from diffs alone — they supplement other sources.
+
 - **Non-session sources** (articles, papers, clips, transcripts): Follow the full protocol — create concept/entity pages freely, add to research/ for deep-dives, synthesize.
 
 ## Batch strategy
@@ -475,6 +600,9 @@ KB compile complete.
 
 Sources processed: N/<total>
 - Sessions: X (summary) + Y (task)
+- Chronicles: Z
+- Plans: Z
+- Diffs: Z
 - Articles: Z
 - Papers: Z
 - Clips: Z
@@ -507,17 +635,17 @@ Lint results: [summary from kb-lint]
 Begin now. No confirmation needed. Work to completion.
 ```
 
-### 12e. Incorporate subagent report
+### 13e. Incorporate subagent report
 
-After the Sonnet subagent returns, capture its report summary and roll it into Step 14's KB compile line. The subagent handles all the heavy lifting (schema reading, protocol execution, session-file priority rules, kb-index rebuild, kb-lint); the main checkpoint thread just records the outcome.
+After the Sonnet subagent returns, capture its report summary and roll it into Step 15's KB compile line. The subagent handles all the heavy lifting (schema reading, protocol execution, session-file priority rules, kb-index rebuild, kb-lint); the main checkpoint thread just records the outcome.
 
-If the subagent fails or errors out, log the failure but don't fail the whole checkpoint — the next checkpoint will resume from `source-map.json` automatically. Note the failure in Step 14's report with enough detail for the user to debug.
+If the subagent fails or errors out, log the failure but don't fail the whole checkpoint — the next checkpoint will resume from `source-map.json` automatically. Note the failure in Step 15's report with enough detail for the user to debug.
 
-## Step 13: Commit and Push All Repos
+## Step 14: Commit and Push All Repos
 
 Commit and push **every repo with changes** — workspace, skill backends, and standalone repos.
 
-### 13a. Workspace repo
+### 14a. Workspace repo
 ```bash
 cd ~/.openclaw/workspace
 git add -A
@@ -529,7 +657,19 @@ git commit -m "checkpoint: YYYY-MM-DD — [1-line summary of key changes]"
 git push
 ```
 
-### 13b. All code repos
+### 14b. KB vault repo
+```bash
+cd ~/.openclaw/vaults/Claw
+git add -A
+git status --short
+```
+If there are staged changes:
+```bash
+git commit -m "checkpoint: YYYY-MM-DD — [1-line summary: wiki pages updated, raw sources added, etc.]"
+git push
+```
+
+### 14c. All code repos
 For each repo, check for uncommitted changes and push:
 ```bash
 for repo in ~/skill-backends/*/ ~/repos/*/; do
@@ -551,7 +691,7 @@ done
 
 Skip repos with no changes and no unpushed commits.
 
-## Step 14: Report Summary
+## Step 15: Report Summary
 
 Print a confirmation in this format:
 
@@ -580,6 +720,7 @@ Updated:
 - Vault note — [created/appended] vaults/Claw/raw/sessions/YYYY-MM-DD/summary-YYYY-MM-DD.md
 - Sessions — swept N file(s) to vaults/Claw/raw/sessions/YYYY-MM-DD/ [or "no session files"]
 - Flat file migration — migrated N file(s) [or "none needed"]
+- KB raw deposits — chronicles: N project(s), plans: N file(s), diffs: [yes/no] [or "nothing to deposit"]
 - Reference docs — [which ones, if any]
 - KB compile — Sonnet subagent processed N source(s) → M page(s) created, K updated [or "nothing to compile" or "skipped (--no-kb)" or "subagent failed: <reason>, next checkpoint will resume"]
 - Git — workspace: [committed and pushed / no changes]; backends: [list repos pushed, or "no changes"]

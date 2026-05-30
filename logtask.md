@@ -156,7 +156,11 @@ Match the current work to a project:
 - **contentflow** — Content ingestion, extraction, creation, video/media
 - **cc-remote** — Remote access, Telegram bridge, handoff mode
 - **dataflow** — Data analysis, Kaggle, profiling, EDA
-- **career** — Career-related tasks, pitch decks, presentations
+- **career** — Career Engine: resume, portfolio, company targeting, cadence, presentations
+- **tradeflow** — Trade alerting, Break & Retest scanner, strategy signals
+- **trader** — Trader agent, tradelog, trade journaling, market operations
+- **flow** — Flow/Soma agent, body/movement cueing
+- **gemma4good** — Kaggle hackathon, Gemma 4 Good, OpenMath
 
 If no project fits cleanly, use `None`.
 
